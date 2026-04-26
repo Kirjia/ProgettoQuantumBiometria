@@ -240,3 +240,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .src/feature_extracted_dataset/dataset_features_and_labels.pt
+
+
+#DATASET
+src/feature_extracted_dataset/dataset_features_and_labels.pt
