@@ -11,12 +11,8 @@ from qiskit_algorithms.gradients import ParamShiftEstimatorGradient
 from qiskit_machine_learning.neural_networks import EstimatorQNN
 from qiskit_machine_learning.connectors import TorchConnector
 from qiskit_aer.primitives import EstimatorV2 as AerEstimator
+from qiskit_machine_learning.gradients import SPSAEstimatorGradient
 
-import os
-
-os.environ['OMP_NUM_THREADS'] = '12'
-os.environ['MKL_NUM_THREADS'] = '12'
-os.environ['OPENBLAS_NUM_THREADS'] = '12'
 
 
 
@@ -46,14 +42,13 @@ def quantumAnsatz(n_qubits, n_dim) -> tuple[QuantumCircuit, int, list, list]:
     ansatz = fm.compose(ansats)
     weight_params = [param for param in ansatz.parameters if param.name.startswith("θ")]
     
-    
     return ansatz, d_padded, input_params, weight_params
        
 
 
 
 class VQC(nn.Module):
-    def __init__(self, n_qubits, n_dim, obs=None):
+    def __init__(self, n_qubits, n_dim, obs=None, gradient_mode='SPSA'):
         super(VQC, self).__init__()
         self.n_qubits = n_qubits
         self.quantum_ansats, self.d_padded, self.input_params, self.weight_params = quantumAnsatz(n_qubits, n_dim)
@@ -69,9 +64,18 @@ class VQC(nn.Module):
         
         
 
-        self.q_weights = nn.Parameter(torch.empty(len(list(self.quantum_ansats.parameters))).uniform_(-0.01, 0.01))
+        self.q_weights = nn.Parameter(torch.empty(len(list(self.weight_params))).uniform_(-0.01, 0.01))
         
-        gradients = ParamShiftEstimatorGradient(estimator)
+        
+        if gradient_mode == 'SPSA':
+            self.gradient = SPSAEstimatorGradient(estimator)
+        elif gradient_mode == 'SPSA_second_order':
+            self.gradient = SPSAEstimatorGradient(estimator, second_order=True)
+        else:
+            raise ValueError(f"Modalità di gradiente non supportata: {gradient_mode}")
+        
+        #sampler = Sampler();
+        #qnspsa = QNSPSA(maxiter=300, perturbation=0.01, learning_rate=0.01)
 
         # Create the Estimator QNN
         self.qnn = EstimatorQNN(circuit=self.quantum_ansats,
@@ -79,8 +83,7 @@ class VQC(nn.Module):
                                 input_params=self.input_params,
                                 weight_params=self.weight_params,
                                 estimator=estimator,
-                                gradient=gradients,
-                                input_gradients=True)
+                                )
 
         # Connect to PyTorch
         self.quantum_layer = TorchConnector(self.qnn)
@@ -96,5 +99,6 @@ class VQC(nn.Module):
         # 5. Classificazione finale
         logits = self.linear(q_out)
         return logits
+    
     
     
