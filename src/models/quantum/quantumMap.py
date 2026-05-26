@@ -57,7 +57,7 @@ class VQC(nn.Module):
 
         estimator = AerEstimator()
         estimator.options.simulator = {
-            "method": "statevector",  # Simulazione esatta richiesta dal prof
+            "method": "statevector",  
             "device": "GPU",          # Usa la scheda video
             "cuStateVec_enable": True # Attiva i driver quantistici NVIDIA ad alte prestazioni
         }
@@ -65,6 +65,8 @@ class VQC(nn.Module):
         
 
         self.q_weights = nn.Parameter(torch.empty(len(list(self.weight_params))).uniform_(-0.01, 0.01))
+
+        gradient = ParamShiftEstimatorGradient(estimator)
         
         
         if gradient_mode == 'SPSA':
@@ -83,6 +85,8 @@ class VQC(nn.Module):
                                 input_params=self.input_params,
                                 weight_params=self.weight_params,
                                 estimator=estimator,
+                                gradient=gradient,
+                                input_gradients=False
                                 )
 
         # Connect to PyTorch
@@ -101,4 +105,6 @@ class VQC(nn.Module):
         return logits
     
     
+    
+
     
