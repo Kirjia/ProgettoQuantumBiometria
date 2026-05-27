@@ -5,13 +5,12 @@ import torch
 from qiskit.circuit.library import real_amplitudes
 from qiskit.circuit import Parameter, QuantumCircuit, ParameterVector
 import torch.nn as nn
-from qiskit_aer import AerSimulator
-from qiskit_aer.primitives import EstimatorV2 as EstimatorAer
 from qiskit_algorithms.gradients import ParamShiftEstimatorGradient
 from qiskit_machine_learning.neural_networks import EstimatorQNN
 from qiskit_machine_learning.connectors import TorchConnector
 from qiskit_aer.primitives import EstimatorV2 as AerEstimator
 from qiskit_machine_learning.gradients import SPSAEstimatorGradient
+import numpy as np
 
 
 
@@ -63,8 +62,9 @@ class VQC(nn.Module):
         }
         
         
-
-        self.q_weights = nn.Parameter(torch.empty(len(list(self.weight_params))).uniform_(-0.01, 0.01))
+        #Stessi risultati tra i due pesi iniziali, nessuno dei due mostra una convergenza più rapida. 
+        #self.q_weights = nn.Parameter(torch.empty(len(list(self.weight_params))).uniform_(-0.01, 0.01))
+        self.q_weights = nn.Parameter(torch.empty(len(list(self.weight_params))).uniform_(-np.pi, np.pi))
 
         gradient = ParamShiftEstimatorGradient(estimator)
         

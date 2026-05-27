@@ -1,0 +1,237 @@
+from utils import ASSETS_DIR
+import torch
+import torch.nn.functional as F
+from models.quantum.quantumMap import quantumAnsatz, VQC
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import torch.nn as nn
+from utils.models import load_all_skops
+import torch.optim as optim
+from sklearn.utils import resample
+from qiskit.circuit.library import real_amplitudes
+from qiskit.circuit import Parameter, QuantumCircuit, ParameterVector
+from qiskit_machine_learning.neural_networks import EstimatorQNN
+from qiskit_aer.primitives import EstimatorV2
+from qiskit.quantum_info import SparsePauliOp
+from qiskit_algorithms.optimizers import SPSA
+import time
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+from qiskit_aer.primitives import EstimatorV2 as AerEstimator
+
+n_qubits = 6
+dim = [4, 8, 16, 32]
+
+objs = load_all_skops(ASSETS_DIR / "seeds_11")
+objs.pop("scaler")
+
+
+pca32 = objs['pca_32']
+
+dataset = pd.read_csv(ASSETS_DIR / "seeds_11/train_11.csv")
+dataset = resample(dataset, n_samples=6000, random_state=11, stratify=dataset["label"])
+val = pd.read_csv(ASSETS_DIR / "seeds_11/val_11.csv")
+X_train = dataset.drop(columns=["label"])
+X_train = pca32.transform(X_train.values)
+Y_train = dataset["label"]
+X_val = val.drop(columns=["label"])
+X_val = pca32.transform(X_val.values)
+Y_val = val["label"]
+
+del dataset
+
+scaler = MinMaxScaler(feature_range=(0, 2*np.pi))
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+
+tensor = torch.from_numpy(X_train).float()
+tensor.size()
+tensor_Y = torch.from_numpy(Y_train.values).long()
+
+tensor_val = torch.from_numpy(X_val).float()
+tensor_Y_val = torch.from_numpy(Y_val.values).long()
+
+
+
+
+def zero_padding(n_qubits, n_dim):
+    resto = n_dim % n_qubits
+    if resto == 0:
+        pad_size = 0
+    else:
+        pad_size = n_qubits - resto  # Nel caso 16 % 6 -> resto 4 -> servono 2 zeri
+
+    d_padded = n_dim + pad_size          
+
+    print(f"Dimensione originale: {n_dim}, Zeri aggiunti: {pad_size}, Dimensione padded: {d_padded}")
+    return d_padded
+
+
+padding = zero_padding(n_qubits, dim[3])
+
+ansatz = real_amplitudes(num_qubits=6, reps=2)
+
+input_layer = QuantumCircuit(n_qubits)
+input_params = ParameterVector("x", length=padding)
+for i in range(padding):
+    input_layer.ry(input_params[i], i % n_qubits)  # Applica la rotazione Ry al qubit i%n_qubits
+
+full_ansatz = input_layer.compose(ansatz)
+weight_params = [param for param in full_ansatz.parameters if param.name.startswith("θ")]
+
+observables = []
+for i in range(n_qubits):
+    # Mette una 'Z' sul qubit i, e l'identità 'I' su tutti gli altri
+    obs = SparsePauliOp.from_sparse_list([("Z", [i], 1.0)], num_qubits=n_qubits)
+    observables.append(obs)
+
+
+#Estimator = EstimatorV2(options={"run_options": {"device": "GPU"}})
+
+estimator = AerEstimator()
+estimator.options.simulator = {
+    "method": "statevector",  
+    "device": "GPU",          # Usa la scheda video
+    "cuStateVec_enable": True # Attiva i driver quantistici NVIDIA ad alte prestazioni
+}
+
+qnn = EstimatorQNN(
+    circuit=full_ansatz,
+    observables=observables,
+    input_params=input_params,
+    weight_params=weight_params,
+    estimator=estimator
+)
+
+print(
+    f"Number of input features for EstimatorQNN: {qnn.num_inputs} \nInput: {qnn.input_params}"
+)
+print(
+    f"Number of trainable weights for EstimatorQNN: {qnn.num_weights} \nWeights: {qnn.weight_params}"
+)
+
+X_padded = F.pad(tensor, (0, padding - dim[3]), mode="constant", value=0.0)
+dataset_train = torch.utils.data.TensorDataset(
+    X_padded.float(),
+    torch.from_numpy(Y_train.values).long()
+)
+print(f"Dataset train size: {dataset_train.__len__()} samples")
+dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=128, shuffle=True, num_workers=12, pin_memory=True)
+
+X_padded_val = F.pad(tensor_val, (0, padding - dim[3]), mode="constant", value=0.0)
+dataset_val = torch.utils.data.TensorDataset(
+    X_padded_val.float(),
+    torch.from_numpy(Y_val.values).long()
+)
+print(f"Dataset val size: {dataset_val.__len__()} samples")
+dataloader_val = torch.utils.data.DataLoader(dataset_val, batch_size=128, shuffle=True, num_workers=12, pin_memory=True)
+
+
+
+spsa = SPSA(maxiter=15, learning_rate=0.015, perturbation=0.2)
+
+class_layer = nn.Linear(n_qubits, 4) 
+optimizer_class = optim.Adam(class_layer.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
+
+q_weights = np.random.uniform(0, 2 * np.pi, qnn.num_weights)
+epochs = 20
+
+def spsa_objective(weights):
+            # 1. Esecuzione del circuito sui dati del batch
+            q_out = qnn.forward(X_np, weights) # shape: (batch_size, 6)
+            
+            # 2. Passaggio nel layer classico solo per misurare l'errore
+            with torch.no_grad(): 
+                q_tensor = torch.tensor(q_out, dtype=torch.float32)
+                logits = class_layer(q_tensor)
+                loss = loss_fn(logits, Y_batch)
+                
+            return loss.item()
+
+# Assumiamo di avere il dataloader_train impostato con batch_size tra 64 e 128
+for epoch in range(epochs):
+    print(f"\n--- Inizio Epoca {epoch+1}/{epochs} ---")
+    
+    time_epoch_start = time.time()
+    for batch_idx, (X_batch, Y_batch) in enumerate(dataloader_train): # Sostituisci con il tuo loader di training
+        torch.cuda.empty_cache()  # Pulisce la cache GPU per evitare out-of-memory
+        t_bach_start = time.time()
+
+        # Qiskit richiede array NumPy
+        X_np = X_batch.numpy()
+        
+        # ==========================================
+        # FASE 1: Addestramento Quantistico (SPSA)
+        # ==========================================
+        class_layer.eval() # Congela i pesi classici
+        
+        
+        
+        # SPSA stima il gradiente e aggiorna ESCLUSIVAMENTE i pesi quantistici
+        res = spsa.minimize(fun=spsa_objective, x0=q_weights)
+        q_weights = res.x 
+        
+        # ==========================================
+        # FASE 2: Addestramento Classico (PyTorch Adam)
+        # ==========================================
+        class_layer.train() # Riattiva il tracciamento dei gradienti
+        optimizer_class.zero_grad()
+        
+        # Rieseguiamo il forward quantistico con i pesi aggiornati per avere dati allineati
+        q_out_updated = qnn.forward(X_np, q_weights)
+        q_tensor_updated = torch.tensor(q_out_updated, dtype=torch.float32)
+        
+        # Calcolo classico puro e backpropagation
+        logits = class_layer(q_tensor_updated)
+        loss = loss_fn(logits, Y_batch)
+        
+        loss.backward()
+        optimizer_class.step() # Aggiorna ESCLUSIVAMENTE i pesi di nn.Linear
+        
+        if batch_idx % 10 == 0:
+            print(f"  Batch {batch_idx} completato - Loss: {loss.item():.4f}")
+            t_batch_end = time.time()
+            print(f"  Tempo per Batch {batch_idx}: {t_batch_end - t_bach_start:.2f} secondi")
+        
+    time_epoch_end = time.time()
+    print(f"Tempo per Epoca {epoch+1}: {time_epoch_end - time_epoch_start:.2f} secondi")
+    print(f"Fine Epoca {epoch+1} completata.")
+
+
+# --- 4. Valutazione sul Validation Set e Confusion Matrix ---
+
+print("\n--- Valutazione sul Validation Set ---")
+class_layer.eval()
+
+all_preds = []
+all_labels = []
+
+with torch.no_grad():
+    for X_batch, Y_batch in dataloader_val:
+        X_np = X_batch.numpy()
+        
+        # Forward quantistico
+        q_out = qnn.forward(X_np, q_weights)
+        
+        # Forward classico (applicando lo stesso moltiplicatore del training)
+        q_tensor = torch.tensor(q_out, dtype=torch.float32) * 2.0
+        logits = class_layer(q_tensor)
+        
+        # Estrazione delle classi predette
+        _, preds = torch.max(logits, dim=1)
+        
+        all_preds.extend(preds.numpy())
+        all_labels.extend(Y_batch.numpy())
+
+# Generazione e stampa della matrice
+cm = confusion_matrix(all_labels, all_preds)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[0, 1, 2, 3])
+
+fig, ax = plt.subplots(figsize=(8, 6))
+disp.plot(cmap=plt.cm.Blues, ax=ax, values_format='d')
+plt.title("Confusion Matrix del Modello Ibrido Quantum-Classico")
+plt.xlabel("Classe Predetta")
+plt.ylabel("Classe Reale")
+plt.show()
