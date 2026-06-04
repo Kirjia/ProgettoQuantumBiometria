@@ -1,0 +1,9 @@
+joblib==1.5.3
+numpy==2.4.6
+Pillow==12.2.0
+qiskit==2.4.1
+qiskit_machine_learning==0.9.0
+scikit_learn==1.8.0
+skops==0.14.0
+torch==2.12.0
+torchvision==0.27.0
