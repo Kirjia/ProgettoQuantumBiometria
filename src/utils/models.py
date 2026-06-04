@@ -3,7 +3,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import skops.io as sio
 from pathlib import Path
-from utils import SRC_ROOT, ASSETS_DIR
+from . import SRC_ROOT, ASSETS_DIR
 
 print(f"La root del progetto è: {SRC_ROOT}")
 
