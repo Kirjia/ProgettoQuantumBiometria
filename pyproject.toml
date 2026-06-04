@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
@@ -18,4 +19,15 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
+=======
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ProgettoQuatumBiometria"  # Puoi chiamarlo come vuoi
+version = "0.1.0"
+
+[tool.setuptools.packages.find]
+>>>>>>> origin/QuantumTest-Kirjia
 where = ["src"]  # Dice a Python: "Le mie librerie sono tutte qui dentro"
