@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 joblib==1.5.3
 numpy==2.4.6
 Pillow==12.2.0
@@ -8,7 +8,6 @@ scikit_learn==1.8.0
 skops==0.14.0
 torch==2.12.0
 torchvision==0.27.0
-=======
 absl-py==2.4.0
 asgiref==3.11.1
 asttokens==3.0.1
@@ -48,7 +47,6 @@ fire==0.7.1
 fonttools==4.62.1
 fsspec==2026.4.0
 grpcio==1.80.0
--e git+https://github.com/GioRed30/ProgettoQuantumBioetria.git@79763b8b5278a0e1375329c895e72f8908a0f4ac#egg=il_mio_progetto
 ImageIO==2.37.3
 ipykernel==7.2.0
 ipython==9.14.0
@@ -150,4 +148,3 @@ typing_extensions==4.15.0
 wcwidth==0.7.0
 Werkzeug==3.1.8
 wheel==0.46.3
->>>>>>> origin/QuantumTest-Kirjia
