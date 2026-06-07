@@ -3,12 +3,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import skops.io as sio
 from pathlib import Path
-from . import SRC_ROOT, ASSETS_DIR
+from utils import SRC_ROOT, ASSETS_DIR
 
 print(f"La root del progetto è: {SRC_ROOT}")
 
 def create_pretrained_pipeline(pretrained_scaler : StandardScaler, pretrained_pca, model):
-
         return Pipeline([
 
             ('scaler', FrozenTransformer(pretrained_scaler)),

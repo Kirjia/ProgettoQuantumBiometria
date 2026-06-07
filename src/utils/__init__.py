@@ -14,5 +14,5 @@ MODELS_DIR = SRC_ROOT / "models"
 
 # Opzionale: puoi importare qui i tuoi sottomoduli per rendere 
 # l'importazione più pulita nei notebook
-from . import dataset
-from . import models
+from utils import dataset
+from utils import models

@@ -40,7 +40,9 @@ class ExperimentConfig:
     seed: int = 11
 
 
-
+# Metodo padding. 
+# Input: numero qubits, dimensione dati in input. Output: resto suddivisione padding, 
+# numero blocchi ottenuti, e grandezza padding
 def zero_padding(n_qubits, n_dim) -> tuple[int, int, int]:
     resto = n_dim % n_qubits
     if resto == 0:
@@ -54,6 +56,7 @@ def zero_padding(n_qubits, n_dim) -> tuple[int, int, int]:
 
     return d_padded, num_blocks, pad_size
     
+
 def pauli_observable(n_qubits, obs_str)-> list[str]:
     pauli = {'I': 'I', 'X': 'X', 'Y': 'Y', 'Z': 'Z'}
     observables = []
@@ -65,26 +68,15 @@ def pauli_observable(n_qubits, obs_str)-> list[str]:
             observables.append(obs)
     return observables
 
-#obsolete, non più usata, è stata sostituita da build_quantum_circuit che ora supporta anche ansats personalizzati e più livelli di encoding
-'''def build_quantum_circuit(n_qubits, n_dim) -> tuple[QuantumCircuit, int, list, list]:
-    d_padded = zero_padding(n_qubits, n_dim)
-    ansats = real_amplitudes(num_qubits=n_qubits, reps=2, name="Ansatz")
-
-    fm = QuantumCircuit(n_qubits)
-    input_params = ParameterVector("x", length=d_padded)
-    for i in range(d_padded):
-        fm.ry(input_params[i], i % n_qubits)  # Applica la rotazione Ry al qubit i%n_qubits
-
-    ansatz = fm.compose(ansats)
-    weight_params = [param for param in ansatz.parameters if param.name.startswith("θ")]
-    
-    return ansatz, d_padded, input_params, weight_params'''
-       
 
 
 '''###############################################################
 #######################  PARTE FATTA DAL TUTOR  ########################
 ###############################################################'''
+
+
+# Invece della backprop standard, l'algoritmo SPSA (o QNSPSA) "scuote" i 
+# parametri quantistici per stimare la direzione del gradiente
 class _BatchedEstimatorPauliSPSAFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, model: "VQC", x: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
@@ -301,3 +293,24 @@ def build_quantum_circuit(real_qubits: int,
 
     
         
+
+
+
+
+
+
+
+#obsolete, non più usata, è stata sostituita da build_quantum_circuit che ora supporta anche ansats personalizzati e più livelli di encoding
+'''def build_quantum_circuit(n_qubits, n_dim) -> tuple[QuantumCircuit, int, list, list]:
+    d_padded = zero_padding(n_qubits, n_dim)
+    ansats = real_amplitudes(num_qubits=n_qubits, reps=2, name="Ansatz")
+
+    fm = QuantumCircuit(n_qubits)
+    input_params = ParameterVector("x", length=d_padded)
+    for i in range(d_padded):
+        fm.ry(input_params[i], i % n_qubits)  # Applica la rotazione Ry al qubit i%n_qubits
+
+    ansatz = fm.compose(ansats)
+    weight_params = [param for param in ansatz.parameters if param.name.startswith("θ")]
+    
+    return ansatz, d_padded, input_params, weight_params'''
