@@ -41,12 +41,17 @@ def undersample_dataset(df, label_col='label', random_seed=42):
     - Un nuovo DataFrame bilanciato e rimescolato.
     """
     
-    # 1. Conta le occorrenze di ogni classe
-    class_counts = df[label_col].value_counts()
+    # 1. Conta le occorrenze di ogni classe (inclusi NaN)
+    class_counts = df[label_col].value_counts(dropna=False)
+    
+    # Stampa distribuzione originale
+    print(f"Distribuzione originale delle classi:")
+    print(class_counts)
     
     # 2. Trova la dimensione della classe minoritaria
     min_size = class_counts.min()
-    print(f"Dimensione classe minoritaria trovata: {min_size} elementi.")
+    min_label = class_counts.idxmin()
+    print(f"\nClasse minoritaria: {min_label} con {min_size} elementi.")
     
     balanced_dfs = []
     
@@ -54,6 +59,8 @@ def undersample_dataset(df, label_col='label', random_seed=42):
     for label in class_counts.index:
         # Filtra solo i dati di questa specifica classe
         df_class = df[df[label_col] == label]
+        
+        print(f"Classe {label}: {len(df_class)} elementi -> campiono {min_size}")
         
         # Estrai casualmente 'min_size' elementi
         df_class_sampled = df_class.sample(n=min_size, random_state=random_seed)
@@ -63,5 +70,9 @@ def undersample_dataset(df, label_col='label', random_seed=42):
         
     # 4. Unisci tutto e rimescola le righe (frac=1)
     df_balanced = pd.concat(balanced_dfs).sample(frac=1, random_state=random_seed).reset_index(drop=True)
+    
+    print(f"\nDataset bilanciato - dimensione totale: {len(df_balanced)}")
+    print(f"Distribuzione finale:")
+    print(df_balanced[label_col].value_counts(dropna=False))
     
     return df_balanced

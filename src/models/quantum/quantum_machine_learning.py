@@ -13,6 +13,8 @@ import numpy as np
 from typing import Any, Callable, Callable
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.circuit.library import real_amplitudes
+from qiskit.circuit.library import zz_feature_map
+from qiskit.circuit.library import efficient_su2
 
 AnyFunction = Callable[..., Any]
 
@@ -25,7 +27,8 @@ class ExperimentConfig:
     n_qubits: int = 6
     input_dim: int = 32
     reps: int = 2
-    ansatz_function: AnyFunction = real_amplitudes
+    ansatz_function: str = "real_amplitudes"
+    encoding_function: str = "ry"
     readout_name: str = "z"
     
     # --- Machine Learning ---
@@ -34,6 +37,7 @@ class ExperimentConfig:
     learning_rate: float = 1e-3
     num_classes: int = 4
     n_splits_kfold: int = 5
+    encoding_range: tuple[float, float] = (0, 2 * np.pi)  # Range per la normalizzazione dei dati di input
     
     # --- Hardware ---
     use_gpu: bool = True
@@ -266,38 +270,164 @@ class VQC(nn.Module):
     '''###############################################################'''
 
 
+
+"""
+    Encloses any type of quantum circuit construction, allowing for flexible ansatz design and multiple encoding layers.
+        - build_ansatz: A helper function to construct the ansatz based on a provided function and parameters.
+
+        Parameters: [ansatz_fun: callable, n_qubits: int, reps: int, name: str, **kwargs: Any]
+        >> ansatz_fun: A callable that generates a quantum circuit ansatz (e.g., real_amplitudes).
+        >> n_qubits: The number of qubits to use in the ansatz.
+        >> reps: The number of repetitions (layers) in the ansatz.
+        >> name: A string to name the ansatz for parameter identification.
+        >> **kwargs: Additional parameters that may be required by the ansatz function.
+
+"""
 def build_ansatz(ansatz_fun: AnyFunction, n_qubits: int,
                  reps: int,
-                 name: str ,
+                 name: str,
                  **kwargs: Any) -> QuantumCircuit:
     return ansatz_fun(num_qubits=n_qubits, reps=reps, name=name, **kwargs)
 
 
+def default_encoding_layer(n_qubits: int, input_params: ParameterVector, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
+    qc = QuantumCircuit(n_qubits)
+    for i, param in enumerate(input_params):
+        qc.ry(param, i)
+    return qc
 
-def build_quantum_circuit(real_qubits: int,
-                          encoding_depth: int, **kwargs) -> dict[str, Any]:
+
+def rx_encoding_layer(n_qubits: int, input_params: ParameterVector, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
+    qc = QuantumCircuit(n_qubits)
+    for i, param in enumerate(input_params):
+        qc.ry(param, i)
+        qc.rz(param/np.pi , i)
+    return qc
+
+
+def build_encoding_layer(encoding_fun: AnyFunction, n_qubits: int, input_params: ParameterVector, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
+    return encoding_fun(n_qubits=n_qubits, layer=layer, input_params=input_params, **kwargs)
+
+
+def zzfeaturemap_encoding_layer(
+    n_qubits: int,
+    layer: int = 0,
+    input_params: ParameterVector | None = None,
+    parameter_prefix: str = "x",
+    reps: int = 1,
+    data_map_func: Callable[[np.ndarray, int], float] | None = None,
+    **kwargs: Any,
+) -> QuantumCircuit:
+    circuit = zz_feature_map(
+        feature_dimension=n_qubits,
+        reps=reps,
+        name=f'zzfeaturemap_layer{layer}',
+        parameter_prefix=parameter_prefix,
+        data_map_func=data_map_func,
+        **kwargs,
+    )
+    if input_params is not None:
+        fm_params = list(circuit.parameters)
+        if len(fm_params) != len(input_params):
+            raise ValueError(
+                f"zz_feature_map created {len(fm_params)} parameters, but {len(input_params)} were provided."
+            )
+        circuit = circuit.assign_parameters(
+            {fm_param: input_param for fm_param, input_param in zip(fm_params, input_params)}
+        )
+    return circuit
+
+def efficient_su2_encoding_layer(n_qubits: int, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
+    return efficient_su2(n_qubits=n_qubits, reps=1, name=f'efficient_su2_layer{layer}', insert_barriers=True, **kwargs)
+
+ENCODING_LAYER_FACTORY: dict[str, AnyFunction] = {
+    'ry': default_encoding_layer,
+    'rx': rx_encoding_layer,
+    'zzfeaturemap': zzfeaturemap_encoding_layer,
+    'efficient_su2': efficient_su2_encoding_layer,
+}
+
+ANSATZ_FACTORY: dict[str, AnyFunction] = {
+    'real_amplitudes': real_amplitudes,
+    'efficient_su2': efficient_su2,
+}
+
+
+def build_quantum_circuit(
+    real_qubits: int,
+    encoding_depth: int,
+    *,
+    ansatz_name: str = 'real_amplitudes',
+    encoding_name: str = 'ry',
+    ansatz_fun: AnyFunction | None = None,
+    encoding_fun: AnyFunction | None = None,
+    reps: int = 1,
+    ansatz_kwargs: dict[str, Any] | None = None,
+    encoding_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     
     total_qubits = encoding_depth * real_qubits
     input_params = ParameterVector("x", length=total_qubits)
     quantum_circuit = QuantumCircuit(real_qubits)
     weight_params = []
-    
-    reps = kwargs.get('reps', 1)  # Ottieni il numero di ripetizioni, default a 1 se non specificato
-    kwargs.pop('reps', None)
+
+    ansatz_kwargs = ansatz_kwargs or {}
+    encoding_kwargs = encoding_kwargs or {}
+
+    ansatz_kwargs.update(kwargs.pop('ansatz_kwargs', {}) or {})
+    encoding_kwargs.update(kwargs.pop('encoding_kwargs', {}) or {})
+
+    if encoding_fun is None:
+        try:
+            encoding_fun = ENCODING_LAYER_FACTORY[encoding_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown encoding_name {encoding_name!r}. Supported names: {list(ENCODING_LAYER_FACTORY)}"
+            ) from exc
+
+    if ansatz_fun is None:
+        try:
+            ansatz_fun = ANSATZ_FACTORY[ansatz_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown ansatz_name {ansatz_name!r}. Supported names: {list(ANSATZ_FACTORY)}"
+            ) from exc
+
+    if kwargs:
+        # Allow legacy constructor kwargs for encoding and ansatz layers.
+        encoding_kwargs.update(kwargs)
+        
 
     for layer in range(encoding_depth):
         print(f"Costruzione del layer {layer} con {real_qubits} qubits reali e {total_qubits} qubits totali")
-        for i in range(real_qubits):
-            idx = layer * real_qubits + i
-            quantum_circuit.ry(input_params[idx], i)  # Applica la rotazione Ry al qubit i%total_qubits
-        
-        
-        ansatz = build_ansatz(n_qubits=real_qubits, reps=reps, name=f'ansatz_{layer}', parameter_prefix=f'θ_{layer}', **kwargs)
+        start = layer * real_qubits
+        end = start + real_qubits
+        layer_encoding = build_encoding_layer(
+            encoding_fun=encoding_fun,
+            n_qubits=real_qubits,
+            layer=layer,
+            input_params=input_params[start:end],
+            **encoding_kwargs,
+        )
+        quantum_circuit.compose(layer_encoding, inplace=True)
+
+        ansatz = build_ansatz(
+            ansatz_fun,
+            real_qubits,
+            reps,
+            name=f'ansatz_{layer}',
+            parameter_prefix=f"θ_{layer}",
+            **ansatz_kwargs,
+        )
         quantum_circuit.compose(ansatz, inplace=True)
         weight_params.extend(ansatz.parameters)
-    return {'quantum_circuit': quantum_circuit,
-             'weight_params': weight_params,
-             'input_params': input_params}
+
+    return {
+        'quantum_circuit': quantum_circuit,
+        'weight_params': weight_params,
+        'input_params': input_params,
+    }
 
     
         

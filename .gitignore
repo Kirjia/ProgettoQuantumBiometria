@@ -245,4 +245,8 @@ __marimo__/
 *.skops
 
 #DATASET
-src/feature_extracted_dataset/dataset_features_and_labels.pt
+src/feature_extracted_dataset/dataset_features_and_labels.
+
+settings.json
+extensions.json
+
