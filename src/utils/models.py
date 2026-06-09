@@ -2,7 +2,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import skops.io as sio
-import joblib
 from pathlib import Path
 from utils import SRC_ROOT, ASSETS_DIR
 

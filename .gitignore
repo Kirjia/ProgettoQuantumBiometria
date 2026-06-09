@@ -220,11 +220,7 @@ cython_debug/
 # Ignora tutta la cartella .vscode di default...
 .vscode/*
 
-# ... MA mantieni ("whitelisting") questi file specifici se esistono
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+
 
 # Ruff stuff:
 .ruff_cache/
@@ -245,4 +241,6 @@ __marimo__/
 *.skops
 
 #DATASET
-src/feature_extracted_dataset/dataset_features_and_labels.pt
+src/feature_extracted_dataset/dataset_features_and_labels.
+
+
