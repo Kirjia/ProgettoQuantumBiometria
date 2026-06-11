@@ -9,6 +9,12 @@ from qiskit_machine_learning.connectors import TorchConnector
 from qiskit_machine_learning.gradients import SPSAEstimatorGradient
 from qiskit_aer.primitives import EstimatorV2 as AerEstimator
 
+import json
+import yaml
+import hashlib
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 from typing import Any, Callable, Callable
 from qiskit.quantum_info import SparsePauliOp
@@ -20,6 +26,7 @@ AnyFunction = Callable[..., Any]
 
 
 from dataclasses import dataclass
+from utils import ASSETS_DIR
 
 @dataclass
 class ExperimentConfig:
@@ -43,6 +50,96 @@ class ExperimentConfig:
     use_gpu: bool = True
     seed: int = 11
 
+
+def salva_esperimento_locale(cfg, ansatz_kwargs, report, y_true_test=None, y_pred_test=None, base_dir=ASSETS_DIR / "experiments"):
+    """
+    Salva in modo professionale e locale le configurazioni e le metriche dell'esperimento Quantum.
+    """
+   
+    run_name = f"VQC_q{cfg.n_qubits}_dim{cfg.input_dim}_seed_{cfg.seed}_ansatz{cfg.ansatz_function}_key_{hashlib.md5(str(cfg.__dict__).encode()).hexdigest()[:8]}"
+    run_dir = Path(base_dir) / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    cfg_dict = cfg.__dict__.copy() if hasattr(cfg, '__dict__') else dict(cfg)
+    if "encoding_range" in cfg_dict and isinstance(cfg_dict["encoding_range"], tuple):
+        cfg_dict["encoding_range"] = list(cfg_dict["encoding_range"])
+
+    full_config = {
+        "metadata": {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "run_id": run_name,
+        },
+        "experiment_config": cfg_dict,
+        "ansatz_kwargs": ansatz_kwargs,
+    }
+
+    with open(run_dir / "config.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(full_config, f, default_flow_style=False, sort_keys=False)
+
+    final_metrics = {}
+    if report.get("val_f1"):
+        final_metrics["max_val_f1"] = float(np.max(report["val_f1"]))
+        final_metrics["mean_val_f1"] = float(np.mean(report["val_f1"]))
+        final_metrics["final_val_loss"] = float(report["val_loss"][-1])
+        final_metrics["final_train_loss"] = float(report["train_loss"][-1])
+        final_metrics["total_time_sec"] = float(np.sum(report["epoch_time"]))
+    if report.get("val_auc"):
+        final_metrics["max_val_auc"] = float(np.max(report["val_auc"]))
+        final_metrics["mean_val_auc"] = float(np.mean(report["val_auc"]))
+        final_metrics["final_val_auc"] = float(report["val_auc"][-1])
+    if report.get("val_ece"):
+        final_metrics["min_val_ece"] = float(np.min(report["val_ece"]))
+        final_metrics["mean_val_ece"] = float(np.mean(report["val_ece"]))
+        final_metrics["final_val_ece"] = float(report["val_ece"][-1])
+
+    test_metrics = {}
+    if y_true_test is not None and y_pred_test is not None:
+        from sklearn.metrics import f1_score, classification_report
+        test_metrics["macro_f1"] = float(f1_score(y_true_test, y_pred_test, average='macro'))
+        test_metrics["classification_report"] = classification_report(y_true_test, y_pred_test, output_dict=True)
+    if report.get("test_auc") is not None:
+        test_metrics["auc"] = float(report["test_auc"])
+    if report.get("test_ece") is not None:
+        test_metrics["ece"] = float(report["test_ece"])
+
+    num_epochs = len(report.get("val_loss", []))
+    epoch_history = []
+    epochs = report.get("epoch", list(range(1, num_epochs + 1)))
+    val_class_reports = report.get("val_classification_reports", [None] * num_epochs)
+    val_aucs = report.get("val_auc", [None] * num_epochs)
+    val_eces = report.get("val_ece", [None] * num_epochs)
+    
+    for idx in range(num_epochs):
+        epoch_history.append({
+            "epoch": int(epochs[idx]) if idx < len(epochs) else idx + 1,
+            "val_loss": float(report["val_loss"][idx]) if "val_loss" in report else None,
+            "val_f1": float(report["val_f1"][idx]) if "val_f1" in report else None,
+            "train_loss": float(report["train_loss"][idx]) if "train_loss" in report else None,
+            "epoch_time_sec": float(report["epoch_time"][idx]) if "epoch_time" in report else None,
+            "val_auc": float(val_aucs[idx]) if idx < len(val_aucs) and val_aucs[idx] is not None else None,
+            "val_ece": float(val_eces[idx]) if idx < len(val_eces) and val_eces[idx] is not None else None,
+            "val_classification_report": val_class_reports[idx] if idx < len(val_class_reports) else None,
+        })
+
+    output_metrics = {
+        "metadata": {
+            "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "run_id": run_name,
+        },
+        "summary": final_metrics,
+        "history": epoch_history,
+    }
+
+    if test_metrics:
+        output_metrics["test"] = test_metrics
+
+    with open(run_dir / "metrics.json", "w", encoding="utf-8") as f:
+        json.dump(output_metrics, f, indent=4)
+
+    print(f"✅ Esperimento salvato localmente con successo!")
+    print(f"📂 Cartella: {run_dir}")
+
+    return run_dir
 
 
 def zero_padding(n_qubits, n_dim) -> tuple[int, int, int]:
@@ -87,7 +184,7 @@ def pauli_observable(n_qubits, obs_str)-> list[str]:
 
 
 '''###############################################################
-#######################  PARTE FATTA DAL TUTOR  ########################
+#######################  PARTE REVISIONATA  ########################
 ###############################################################'''
 class _BatchedEstimatorPauliSPSAFunction(torch.autograd.Function):
     @staticmethod
@@ -147,7 +244,7 @@ class VQC(nn.Module):
         self.head_classical_linear_layer = nn.Linear(num_observables, target_classes)  # Output layer per la classificazione finale
 
         '''###############################################################
-        #######################  PARTE FATTA DAL TUTOR  ########################
+        #######################  PARTE REVISIONATA  ########################
         ###############################################################'''
         self._use_batched_estimator_spsa = gradient_mode == 'estimator_pauli_batched_spsa'
 
@@ -216,7 +313,7 @@ class VQC(nn.Module):
         return logits
     
     '''###############################################################
-        #######################  PARTE FATTA DAL TUTOR  ########################
+        #######################  PARTE REVISIONATA  ########################
         ###############################################################'''
     def _ordered_parameter_values(self, input_values: np.ndarray, weights: np.ndarray) -> np.ndarray:
         if input_values.ndim == 1:
@@ -300,8 +397,11 @@ def default_encoding_layer(n_qubits: int, input_params: ParameterVector, layer: 
 def rx_encoding_layer(n_qubits: int, input_params: ParameterVector, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
     qc = QuantumCircuit(n_qubits)
     for i, param in enumerate(input_params):
-        qc.ry(param, i)
-        qc.rz(param/np.pi , i)
+        if i % 2 == 0:
+            qc.ry(param, i)
+        else:
+            qc.rz(param, i)
+       
     return qc
 
 
@@ -338,7 +438,7 @@ def zzfeaturemap_encoding_layer(
     return circuit
 
 def efficient_su2_encoding_layer(n_qubits: int, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
-    return efficient_su2(n_qubits=n_qubits, reps=1, name=f'efficient_su2_layer{layer}', insert_barriers=True, **kwargs)
+    return efficient_su2(n_qubits=n_qubits, name=f'efficient_su2_layer{layer}', insert_barriers=True, **kwargs)
 
 ENCODING_LAYER_FACTORY: dict[str, AnyFunction] = {
     'ry': default_encoding_layer,
@@ -350,7 +450,16 @@ ENCODING_LAYER_FACTORY: dict[str, AnyFunction] = {
 ANSATZ_FACTORY: dict[str, AnyFunction] = {
     'real_amplitudes': real_amplitudes,
     'efficient_su2': efficient_su2,
+    'ttn': None,  # placeholder: resolved at import time to avoid circular import
 }
+
+# Lazy import: attach TTN ansatz if available
+try:
+    from .ttn_wrapper import ttn_ansatz
+    ANSATZ_FACTORY['ttn'] = ttn_ansatz
+except Exception:
+    # If import fails (missing qiskit or file), leave as None and let callers pass ansatz_fun directly
+    pass
 
 
 def build_quantum_circuit(
@@ -429,5 +538,4 @@ def build_quantum_circuit(
         'input_params': input_params,
     }
 
-    
         

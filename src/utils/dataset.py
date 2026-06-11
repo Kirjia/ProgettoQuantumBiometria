@@ -1,3 +1,5 @@
+from typing import Any, Callable
+
 import numpy as np
 from torch.utils.data import Dataset
 from PIL import Image
