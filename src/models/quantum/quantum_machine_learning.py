@@ -437,14 +437,14 @@ def zzfeaturemap_encoding_layer(
         )
     return circuit
 
-def efficient_su2_encoding_layer(n_qubits: int, layer: int = 0, **kwargs: Any) -> QuantumCircuit:
-    return efficient_su2(n_qubits=n_qubits, name=f'efficient_su2_layer{layer}', insert_barriers=True, **kwargs)
+
+        
+    
 
 ENCODING_LAYER_FACTORY: dict[str, AnyFunction] = {
     'ry': default_encoding_layer,
     'rx': rx_encoding_layer,
     'zzfeaturemap': zzfeaturemap_encoding_layer,
-    'efficient_su2': efficient_su2_encoding_layer,
 }
 
 ANSATZ_FACTORY: dict[str, AnyFunction] = {
