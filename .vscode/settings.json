@@ -1,9 +1,12 @@
 {
-    "python-envs.pythonProjects": [
-        {
-            "path": ".",
-            "envManager": "ms-python.python:venv",
-            "packageManager": "ms-python.python:pip"
-        }
-    ]
+  "python.defaultInterpreterPath": "/home/kirjia/venv-pytorch/bin/python",
+  "python.envFile": "${workspaceFolder}/.env",
+  "python-envs.pythonProjects": [
+    {
+      "path": ".",
+      "envManager": "ms-python.python:venv",
+      "packageManager": "ms-python.python:pip"
+    }
+  ],
+  
 }

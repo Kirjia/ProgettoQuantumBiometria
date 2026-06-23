@@ -1,0 +1,23 @@
+metadata:
+  timestamp: '2026-06-23 15:05:47'
+  run_id: VQC_q6_dim16_seed_11_ansatzttn_key_fc83d8da
+experiment_config:
+  n_qubits: 6
+  input_dim: 16
+  reps: 1
+  ansatz_function: ttn
+  encoding_function: zzfeaturemap
+  readout_name: ZXY
+  batch_size: 128
+  epochs: 50
+  learning_rate: 0.001
+  num_classes: 4
+  n_splits_kfold: 5
+  early_stopping_patience: 5
+  encoding_range:
+  - 0
+  - 3.141592653589793
+  use_gpu: true
+  seed: 11
+ansatz_kwargs:
+  entanglement: reverse_linear

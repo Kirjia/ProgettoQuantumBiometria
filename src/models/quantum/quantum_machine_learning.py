@@ -44,6 +44,8 @@ class ExperimentConfig:
     learning_rate: float = 1e-3
     num_classes: int = 4
     n_splits_kfold: int = 5
+    early_stopping_patience: int = 5
+
     encoding_range: tuple[float, float] = (0, 2 * np.pi)  # Range per la normalizzazione dei dati di input
     
     # --- Hardware ---
