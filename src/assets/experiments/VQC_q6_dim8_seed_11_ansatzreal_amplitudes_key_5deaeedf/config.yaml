@@ -1,0 +1,23 @@
+metadata:
+  timestamp: '2026-06-24 15:24:37'
+  run_id: VQC_q6_dim8_seed_11_ansatzreal_amplitudes_key_5deaeedf
+experiment_config:
+  n_qubits: 6
+  input_dim: 8
+  reps: 2
+  ansatz_function: real_amplitudes
+  encoding_function: ry
+  readout_name: ZXY
+  batch_size: 128
+  epochs: 50
+  learning_rate: 0.001
+  num_classes: 4
+  n_splits_kfold: 5
+  early_stopping_patience: 5
+  encoding_range:
+  - 0
+  - 3.141592653589793
+  use_gpu: true
+  seed: 11
+ansatz_kwargs:
+  entanglement: reverse_linear
