@@ -1,0 +1,22 @@
+metadata:
+  timestamp: '2026-06-15 18:41:44'
+  run_id: VQC_q6_dim16_seed_11_ansatzefficient_su2_encamplitude_key_a4d9ce79
+experiment_config:
+  n_qubits: 6
+  input_dim: 16
+  reps: 2
+  ansatz_function: efficient_su2
+  encoding_function: amplitude
+  readout_name: ZXY
+  batch_size: 128
+  epochs: 50
+  learning_rate: 0.001
+  num_classes: 4
+  n_splits_kfold: 5
+  encoding_range:
+  - 0
+  - 6.283185307179586
+  use_gpu: true
+  seed: 11
+ansatz_kwargs:
+  entanglement: reverse_linear
